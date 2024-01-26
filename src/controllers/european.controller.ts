@@ -176,7 +176,7 @@ export class EuropeanController extends SessionController<EuropeBlueLinkyConfig>
       } catch (e) {
         logger.error(
           `@EuropeController.login: sign in with ${
-          this.authStrategies.main.name
+            this.authStrategies.main.name
           } failed with error ${(e as Stringifiable).toString()}`
         );
         logger.debug(
@@ -188,33 +188,8 @@ export class EuropeanController extends SessionController<EuropeBlueLinkyConfig>
         });
       }
       logger.debug('@EuropeController.login: Authenticated properly with user and password');
-      const genRanHex = size => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-      const notificationReponse = await got(
-        `${this.environment.baseUrl}/api/v1/spa/notifications/register`,
-        {
-          method: 'POST',
-          headers: {
-            'ccsp-service-id': this.environment.clientId,
-            'Content-Type': 'application/json;charset=UTF-8',
-            'Host': this.environment.host,
-            'Connection': 'Keep-Alive',
-            'Accept-Encoding': 'gzip',
-            'User-Agent': 'okhttp/3.10.0',
-            'ccsp-application-id': this.environment.appId,
-            'Stamp': await this.environment.stamp(),
-          },
-          body: {
-            pushRegId: genRanHex(64),
-            pushType: 'APNS',
-            uuid: this.session.deviceId,
-          },
-          json: true,
-        }
-      );
 
-      if (notificationReponse) {
-        this.session.deviceId = notificationReponse.body.resMsg.deviceId;
-      }
+      this.refreshDeviceId();
       logger.debug('@EuropeController.login: Device registered');
 
       const formData = new URLSearchParams();
@@ -255,6 +230,46 @@ export class EuropeanController extends SessionController<EuropeBlueLinkyConfig>
     } catch (err) {
       throw manageBluelinkyError(err, 'EuropeController.login');
     }
+  }
+
+  /**
+   * Refresh the device id
+   * Should normally only be called once, when the device is registered
+   * However, because of this issue, we call it every time we query the API: https://github.com/Hyundai-Kia-Connect/kia_uvo/issues/672
+   */
+  public async refreshDeviceId(): Promise<void> {
+    const genRanHex = size =>
+      [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    const notificationReponse = await got(
+      `${this.environment.baseUrl}/api/v1/spa/notifications/register`,
+      {
+        method: 'POST',
+        headers: {
+          'ccsp-service-id': this.environment.clientId,
+          'Content-Type': 'application/json;charset=UTF-8',
+          'Host': this.environment.host,
+          'Connection': 'Keep-Alive',
+          'Accept-Encoding': 'gzip',
+          'User-Agent': 'okhttp/3.10.0',
+          'ccsp-application-id': this.environment.appId,
+          'Stamp': await this.environment.stamp(),
+        },
+        body: {
+          pushRegId: genRanHex(64),
+          pushType: 'APNS',
+          uuid: this.session.deviceId,
+        },
+        json: true,
+      }
+    );
+
+    if (notificationReponse) {
+      this.session.deviceId = notificationReponse.body.resMsg.deviceId;
+    }
+
+    logger.debug(
+      `@EuropeController.refreshDeviceId: Device registered with id ${this.session.deviceId}`
+    );
   }
 
   public async logout(): Promise<string> {
@@ -325,6 +340,8 @@ export class EuropeanController extends SessionController<EuropeBlueLinkyConfig>
 
   public async getVehicleHttpService(): Promise<GotInstance<GotJSONFn>> {
     await this.checkControlToken();
+    await this.refreshDeviceId();
+
     return got.extend({
       baseUrl: this.environment.baseUrl,
       headers: {
