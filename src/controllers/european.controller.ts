@@ -281,6 +281,8 @@ export class EuropeanController extends SessionController<EuropeBlueLinkyConfig>
       throw 'Token not set';
     }
 
+    await this.refreshDeviceId();
+
     try {
       const response = await got(`${this.environment.baseUrl}/api/v1/spa/vehicles`, {
         method: 'GET',
